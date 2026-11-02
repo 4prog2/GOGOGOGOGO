@@ -1,6 +1,6 @@
 # Staff Runner (FM-1)
 
-A compact C99 five-line staff rhythm game for the 240×240 M-VAVE FM-1. It has separate treble and bass clef modes, three short original note sequences, a fixed left hit line, and strict note checking: a wrong key plays an error cue while the note and game clock wait for the correct key.
+A compact C99 five-line staff rhythm game for the 240×240 M-VAVE FM-1. It has separate treble and bass clef modes, three short original note sequences, a fixed left hit line, and strict note checking: a wrong key plays an error cue while the note and music progression wait for the correct key.
 
 ## Controls
 
@@ -15,7 +15,7 @@ The score uses natural notes. FM-1 note bit 0 is F3 and bit 26 is G5; the clef-s
 
 This game targets the official [FM1 Open V14 SDK](https://github.com/m-vave/fm1_open), whose `fm1.h` exposes the panel, display, clock, and local MIDI APIs. Copy `src/staff_game.c`, `src/staff_game.h`, `src/staff_game_fm1.c`, and `src/staff_game_fm1.h` into the `app/` directory of an FM1 Open V14 source checkout. Its build script compiles C sources under `app/` automatically.
 
-Add `#include "staff_game_fm1.h"` to `app/screen.c`. In `groove_screen_control()`, immediately after `fm1_controls_read(&controls)`, add `if (staff_game_fm1_control(&controls)) return;`. This lets the game take over the display and input while preserving the normal FM1 screen when it is inactive. Hold **HOME** and press **PLAY** to enter; hold **HOME** and press **REC** to leave. The adapter uses the official panel mapping (HOME 8, PLAY 12, REC 13), press-edge detection, RGB565 screen fills, and `fm1_midi_post()` for note audio.
+Add `#include "staff_game_fm1.h"` to `app/screen.c`. In `groove_screen_control()`, immediately after `fm1_controls_read(&controls)`, add `if (staff_game_fm1_control(&controls)) return;`. This lets the game take over the display and input while preserving the normal FM1 screen when it is inactive. Hold **HOME** and press **PLAY** to enter; hold **HOME** and press **REC** to leave. The adapter uses the official panel mapping (HOME 8, PLAY 12, REC 13), press-edge detection, 16-row asynchronous RGB565 display updates, and `fm1_midi_post()` for note audio.
 
 Install JieLi Windows toolchain 2.5.3 as described in the FM1 Open README, then run `./sdk/Build.ps1 -FirmwareOnly -Toolchain 'C:\JL\pi32'` from the FM1 Open source root. Build and flash only after reviewing the firmware changes on your device. This repository does not flash hardware.
 

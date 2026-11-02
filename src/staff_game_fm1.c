@@ -3,7 +3,6 @@
 #include "staff_game.h"
 
 #define BG 0x0000u
-#define FG 0xFFFFu
 #define CYAN 0x07FFu
 #define GOLD 0xFEA0u
 #define RED 0xF800u

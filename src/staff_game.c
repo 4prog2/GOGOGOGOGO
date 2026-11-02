@@ -21,6 +21,11 @@ static const int8_t songs[3][16] = {
 static const char *song_names[3] = {"Morning Steps", "River Waltz", "Little March"};
 static const char *letters[7] = {"C", "D", "E", "F", "G", "A", "B"};
 static const uint8_t natural_semitones[7] = {0, 2, 4, 5, 7, 9, 11};
+static const uint16_t key_frequency_hz[27] = {
+    175, 185, 196, 208, 220, 233, 247, 262, 277,
+    294, 311, 330, 349, 370, 392, 415, 440, 466,
+    494, 523, 554, 587, 622, 659, 698, 740, 784
+};
 
 static int natural_midi(int midi)
 {
@@ -123,7 +128,7 @@ void staff_game_update(StaffGame *g, uint32_t now_ms, uint32_t notes,
     if (g->note_x_q8 <= Q8(HIT_X) && notes) {
         if (notes & expected_mask) {
             g->error = 0;
-            if (p && p->tone) p->tone((uint16_t)(220u + staff_game_expected_key(g->clef, g->song, g->note_index) * 12u), 100);
+            if (p && p->tone) p->tone(key_frequency_hz[staff_game_expected_key(g->clef, g->song, g->note_index)], 100);
             if (++g->note_index >= 16u) g->screen = STAFF_DONE;
             else g->note_x_q8 = Q8(NOTE_START_X);
         } else if (!g->error) { g->error = 1; error_tone(p); }

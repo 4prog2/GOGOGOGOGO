@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception */
 #include "staff_game.h"
 
 #define WHITE 0xFFFFu
@@ -82,7 +83,7 @@ void staff_game_init(StaffGame *g, uint32_t now_ms)
 
 static void error_tone(const StaffPlatform *p)
 {
-    if (p && p->tone) p->tone(180, 120);
+    if (p && p->tone) p->tone(110, 120);
 }
 
 void staff_game_update(StaffGame *g, uint32_t now_ms, uint32_t notes,
@@ -138,11 +139,10 @@ void staff_game_update(StaffGame *g, uint32_t now_ms, uint32_t notes,
 static int note_y(const StaffGame *g)
 {
     int step = songs[g->song][g->note_index] + (g->clef == STAFF_BASS ? 6 : 0);
-    int bottom = g->clef == STAFF_BASS ? 216 : STAFF_BOTTOM;
-    return bottom - step * STEP_PIXELS;
+    return STAFF_BOTTOM - step * STEP_PIXELS;
 }
 
-static int staff_bottom(const StaffGame *g) { return g->clef == STAFF_BASS ? 216 : STAFF_BOTTOM; }
+static int staff_bottom(const StaffGame *g) { (void)g; return STAFF_BOTTOM; }
 
 void staff_game_draw(const StaffGame *g, const StaffPlatform *p)
 {
@@ -173,8 +173,8 @@ void staff_game_draw(const StaffGame *g, const StaffPlatform *p)
     /* Five clear lines occupy 40% of the screen. Spaces and note positions are 12 px. */
     for (i = 0; i < 5; ++i) p->line(24, staff_bottom(g) - i * 24, 232, staff_bottom(g) - i * 24, 0x7BEFu);
     p->line(HIT_X, 32, HIT_X, 224, CYAN);
-    p->text(8, 14, g->clef == STAFF_TREBLE ? "TREBLE" : "BASS", CYAN);
-    p->text(145, 14, song_names[g->song], WHITE);
+    p->text(8, 4, g->clef == STAFF_TREBLE ? "TREBLE" : "BASS", CYAN);
+    p->text(145, 28, song_names[g->song], WHITE);
     if (g->note_index < 16) {
         y = note_y(g);
         if ((songs[g->song][g->note_index] + (g->clef == STAFF_BASS ? 6 : 0)) % 2 == 0)

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception */
 #ifndef STAFF_GAME_H
 #define STAFF_GAME_H
 

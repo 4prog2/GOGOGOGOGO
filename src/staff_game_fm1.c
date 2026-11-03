@@ -21,11 +21,11 @@ static uint32_t previous_keys, previous_buttons, note_off_at;
 static uint8_t sounding_midi;
 static struct { uint8_t note, on; } midi_events[32];
 static volatile uint8_t midi_write, midi_read, midi_overflow;
-static uint32_t midi_held;
+static uint32_t midi_held, midi_pressed;
 static uint16_t dq_player_index, dq_accomp_index;
-static uint8_t dq_started, dq_waiting;
+static uint8_t dq_started, dq_waiting, dq_note_played;
 static uint32_t dq_elapsed_ms, dq_last_ms, dq_draw_ms;
-static uint8_t dq_active[2][128];
+static uint8_t dq_active[3][128];
 static uint32_t dq_note_off[27];
 #define DQ_LEAD_MS 4050u
 static uint16_t band_pixels[FM1_SCREEN_DMA_PIXELS];
@@ -179,7 +179,7 @@ static void dq_draw(const StaffGame *g, uint32_t elapsed)
 
 static void dq_stop_backing(void)
 {
-    for (unsigned lane = 0; lane < 2; ++lane)
+    for (unsigned lane = 0; lane < 3; ++lane)
         for (unsigned note = 0; note < 128; ++note)
             if (dq_active[lane][note]) {
                 dq_midi((uint8_t)lane, (uint8_t)note, 0);
@@ -195,6 +195,7 @@ static void dq_start(StaffGame *g, uint32_t now)
     dq_last_ms = now;
     dq_started = 1;
     dq_waiting = 0;
+    dq_note_played = 0;
     memset(dq_active, 0, sizeof dq_active);
     memset(dq_note_off, 0, sizeof dq_note_off);
 }
@@ -227,6 +228,7 @@ __attribute__((minsize)) int staff_game_fm1_control(const struct fm1_controls *c
     if(!c) return 0;
     uint32_t now=fm1_millis(), key_edges=c->keys&~previous_keys;
     uint32_t button_edges=c->buttons&~previous_buttons;
+    midi_pressed = 0;
     previous_keys=c->keys; previous_buttons=c->buttons;
     if (midi_overflow) {
         midi_held = 0;
@@ -237,7 +239,7 @@ __attribute__((minsize)) int staff_game_fm1_control(const struct fm1_controls *c
         uint8_t read = midi_read;
         uint8_t note = midi_events[read].note;
         uint32_t bit = 1u << (note - 53u);
-        if (midi_events[read].on) midi_held |= bit;
+        if (midi_events[read].on) { midi_held |= bit; midi_pressed |= bit; }
         else midi_held &= ~bit;
         __asm__ volatile("csync" ::: "memory");
         midi_read = (uint8_t)((read + 1u) & 31u);
@@ -254,34 +256,51 @@ __attribute__((minsize)) int staff_game_fm1_control(const struct fm1_controls *c
                       (uint8_t)((button_edges>>BTN_HOME)&1u),(int8_t)turn,&platform);
     if (!was_playing && game.screen == STAFF_PLAYING && game.song == 3u) dq_start(&game,now);
     if (was_playing && game.screen != STAFF_PLAYING) {
-        dq_stop_backing(); dq_started=0; dq_waiting=0;
+        dq_stop_backing(); dq_started=0; dq_waiting=0; dq_note_played=0;
     }
     if (game.song == 3u && game.screen == STAFF_PLAYING && dq_started) {
         uint32_t delta = now - dq_last_ms;
         dq_last_ms = now;
-        if (!dq_waiting) dq_elapsed_ms += delta > 100u ? 100u : delta;
+        if (game.mode == STAFF_MODE_MISS || !dq_waiting) dq_elapsed_ms += delta > 100u ? 100u : delta;
         if (dq_player_index < DQ_PLAYER_COUNT) {
             uint32_t due = DQ_LEAD_MS + dq_tick_ms(dq_player[dq_player_index].tick);
             if (!dq_waiting && dq_elapsed_ms >= due) dq_waiting = 1;
+            if (dq_waiting && game.mode == STAFF_MODE_MISS && !dq_note_played) {
+                uint32_t mask = dq_player[dq_player_index].mask;
+                for (unsigned k=0;k<27;++k) if (mask & (1u<<k)) {
+                    dq_midi(0,(uint8_t)(53u+k),88); dq_note_off[k]=now+180u;
+                }
+                dq_note_played = 1;
+            }
             if (dq_waiting) {
                 uint32_t expected = dq_player[dq_player_index].mask;
-                if (((key_edges | midi_held) & expected) == expected) {
-                    for (unsigned k=0;k<27;++k) if (expected & (1u<<k)) {
-                        uint8_t note = (uint8_t)(53u+k);
-                        dq_midi(0,note,88); dq_note_off[k]=now+180u;
-                    }
-                    ++dq_player_index; game.error=0; dq_waiting=0;
-                } else if (!game.error) {
+                uint32_t active = key_edges | midi_held;
+                uint32_t pressed = key_edges | midi_pressed;
+                if ((active & expected) == expected && !(pressed & ~expected)) {
+                    if (game.mode == STAFF_MODE_PRACTICE)
+                        for (unsigned k=0;k<27;++k) if (expected & (1u<<k)) {
+                            uint8_t note = (uint8_t)(53u+k);
+                            dq_midi(0,note,88); dq_note_off[k]=now+180u;
+                        }
+                    ++dq_player_index; game.error=0; dq_waiting=0; dq_note_played=0;
+                } else if (game.mode == STAFF_MODE_MISS && (pressed & ~expected)) {
+                    ++game.miss_count; game.error=1;
+                    ++dq_player_index; dq_waiting=0; dq_note_played=0;
+                } else if (game.mode == STAFF_MODE_MISS && dq_elapsed_ms >= due + 300u) {
+                    ++game.miss_count; game.error=1;
+                    ++dq_player_index; dq_waiting=0; dq_note_played=0;
+                } else if (game.mode == STAFF_MODE_PRACTICE && !game.error) {
                     game.error=1; tone(110,120); dq_stop_backing();
                 }
             }
-        } else {
+        }
+        if (dq_player_index >= DQ_PLAYER_COUNT && game.mode == STAFF_MODE_PRACTICE) {
             game.screen=STAFF_DONE; dq_stop_backing(); dq_started=0;
         }
         for(unsigned k=0;k<27;++k) if(dq_note_off[k] && (int32_t)(now-dq_note_off[k])>=0) {
             dq_midi(0,(uint8_t)(53u+k),0); dq_note_off[k]=0;
         }
-        if (!dq_waiting) {
+        if (game.mode == STAFF_MODE_MISS || !dq_waiting) {
             while (dq_accomp_index < DQ_ACCOMP_COUNT) {
                 const DQAccompEvent *e=&dq_accomp[dq_accomp_index];
                 if (DQ_LEAD_MS+dq_tick_ms(e->tick)>dq_elapsed_ms) break;
@@ -289,6 +308,9 @@ __attribute__((minsize)) int staff_game_fm1_control(const struct fm1_controls *c
                 dq_active[e->lane][e->note]=e->on;
                 ++dq_accomp_index;
             }
+        }
+        if (dq_player_index >= DQ_PLAYER_COUNT && dq_accomp_index >= DQ_ACCOMP_COUNT) {
+            game.screen=STAFF_DONE; dq_stop_backing(); dq_started=0;
         }
     }
     if(fm1_screen_pending()==0) {

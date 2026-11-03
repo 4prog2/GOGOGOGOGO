@@ -1,12 +1,13 @@
 # Staff Runner (FM-1)
 
-A compact C99 five-line staff rhythm game for the 240×240 M-VAVE FM-1. It has separate treble and bass clef modes, three short original note sequences, a fixed left hit line, and strict note checking: a wrong key plays an error cue while the note and music progression wait for the correct key.
+A compact C99 five-line staff rhythm game for the 240×240 M-VAVE FM-1. It has separate treble and bass clef modes, three short original note sequences, and the MIDI song “Daughter's Love.” Choose Practice to wait for the right note, or Miss Mode to keep the music and notes moving while wrong or missed notes increase the MISS count. The MIDI song plays drums, intro, and bass as backing, with melody notes shown on the staff for the player.
 
 ## Controls
 
 - Press **PLAY** on the title screen to choose a clef. Turn encoder 1 to switch between treble and bass, then press **PLAY**.
-- Turn encoder 1 to choose one of three songs and press **PLAY** to start.
-- Press the physical note key matching the note at the hit line. A correct pitch advances to the next note and sounds its tone; an incorrect pitch pauses at the hit line until corrected.
+- Choose **Practice** or **Miss Mode** with encoder 1 and press **PLAY**.
+- Turn encoder 1 to choose a song and press **PLAY** to start.
+- Press the physical note key matching the note at the hit line. Practice waits for the correct pitch. Miss Mode continues playback and records wrong or missed notes.
 - A connected MIDI keyboard can also play note-on/note-off pitches F3–G5 on any MIDI channel. Press **PLAY** and use the emulator or FM-1 panel buttons to choose clef and song; MIDI notes control the gameplay pitches.
 - Press **HOME** to return to song selection. Press **PLAY** after a song ends to choose another. Hold **HOME** and press **REC** to restart at the title screen.
 
@@ -14,7 +15,7 @@ The score uses natural notes. FM-1 note bit 0 is F3 and bit 26 is G5; the clef-s
 
 ## Build and FM-1 Open integration
 
-This game targets the official [FM1 Open source](https://github.com/m-vave/fm1_open). `fm1.h` supplies the panel, display, clock and local MIDI APIs. The installer copies the four game C/header files into `app/` and changes `app/screen.c` to launch the game directly. The original FM1 Open screen editor is removed from this game build to make room in flash; the FM1 audio engine, panel scanner, MIDI and validated SDK hooks remain.
+This game targets the official [FM1 Open source](https://github.com/m-vave/fm1_open). `fm1.h` supplies the panel, display, clock and local MIDI APIs. The installer copies the game modules and MIDI chart data into `app/` and changes `app/screen.c` to launch the game directly. The original FM1 Open screen editor is removed from this game build to make room in flash; the FM1 audio engine, panel scanner, MIDI and validated SDK hooks remain.
 
 Run the installer against an extracted FM1 Open source folder:
 
@@ -22,7 +23,7 @@ Run the installer against an extracted FM1 Open source folder:
 .\install_fm1_game.ps1 'C:\path\to\fm1_open-main'
 ~~~
 
-The game title appears on boot. Press **PLAY** to choose a clef, turn encoder 1 to select treble or bass, and press **PLAY** again. Select one of three songs with encoder 1. The adapter uses the official panel mapping (HOME 8, PLAY 12, REC 13), press-edge detection, 16-row asynchronous RGB565 display updates, and `fm1_midi_post()` for note audio.
+The game title appears on boot. Press **PLAY** to choose a clef, mode, then song, using encoder 1 to move through each menu. The adapter uses the official panel mapping (HOME 8, PLAY 12, REC 13), press-edge detection, 16-row asynchronous RGB565 display updates, and local MIDI playback for song and note audio.
 
 Install JieLi Windows toolchain 2.5.3 as described in the FM1 Open README, then run `./sdk/Build.ps1 -FirmwareOnly -Toolchain 'C:\JL\pi32'` from the FM1 Open source root. This repository does not flash hardware.
 

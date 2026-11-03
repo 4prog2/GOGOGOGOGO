@@ -76,8 +76,8 @@ const char *staff_game_note_name(StaffClef clef, uint8_t song, uint8_t note_inde
 
 __attribute__((minsize)) void staff_game_init(StaffGame *g, uint32_t now_ms)
 {
-    g->screen = STAFF_TITLE; g->clef = STAFF_TREBLE; g->song = 0;
-    g->note_index = 0; g->menu_index = 0; g->error = 0;
+    g->screen = STAFF_TITLE; g->clef = STAFF_TREBLE; g->mode = STAFF_MODE_PRACTICE; g->song = 0;
+    g->note_index = 0; g->menu_index = 0; g->error = 0; g->miss_count = 0; g->note_played = 0;
     g->note_mask = 0; g->last_ms = now_ms; g->note_x_q8 = Q8(NOTE_START_X);
 }
 
@@ -99,18 +99,24 @@ __attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, u
     }
     if (g->screen == STAFF_CLEF_MENU) {
         if (encoder) g->menu_index ^= 1u;
-        if (play) { g->clef = (StaffClef)g->menu_index; g->screen = STAFF_SONG_MENU; g->menu_index = 0; }
+        if (play) { g->clef = (StaffClef)g->menu_index; g->screen = STAFF_MODE_MENU; g->menu_index = g->mode; }
         if (home) g->screen = STAFF_TITLE;
+        return;
+    }
+    if (g->screen == STAFF_MODE_MENU) {
+        if (encoder) g->menu_index ^= 1u;
+        if (play) { g->mode = (StaffMode)g->menu_index; g->screen = STAFF_SONG_MENU; g->menu_index = 0; }
+        if (home) { g->screen = STAFF_CLEF_MENU; g->menu_index = g->clef; }
         return;
     }
     if (g->screen == STAFF_SONG_MENU) {
         if (encoder > 0) g->menu_index = (uint8_t)((g->menu_index + 1u) % 4u);
         if (encoder < 0) g->menu_index = (uint8_t)((g->menu_index + 3u) % 4u);
         if (play) {
-            g->song = g->menu_index; g->note_index = 0; g->error = 0;
+            g->song = g->menu_index; g->note_index = 0; g->error = 0; g->miss_count = 0; g->note_played = 0;
             g->note_x_q8 = Q8(NOTE_START_X); g->screen = STAFF_PLAYING;
         }
-        if (home) g->screen = STAFF_CLEF_MENU;
+        if (home) { g->screen = STAFF_MODE_MENU; g->menu_index = g->mode; }
         return;
     }
     if (g->screen == STAFF_DONE) {
@@ -123,13 +129,27 @@ __attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, u
     if (g->song == 3u) return;
 
     expected_mask = 1u << staff_game_expected_key(g->clef, g->song, g->note_index);
-    if (g->note_x_q8 > Q8(HIT_X)) {
+    if (g->note_x_q8 > Q8(g->mode == STAFF_MODE_MISS ? HIT_X - 24 : HIT_X)) {
         /* 42 px/s; elapsed time bounds prevent jumps after a suspended frame. */
         if (elapsed > 100u) elapsed = 100u;
         g->note_x_q8 -= (elapsed * 42u * 256u) / 1000u;
-        if (g->note_x_q8 < Q8(HIT_X)) g->note_x_q8 = Q8(HIT_X);
+        if (g->mode == STAFF_MODE_PRACTICE && g->note_x_q8 < Q8(HIT_X)) g->note_x_q8 = Q8(HIT_X);
     }
-    if (g->note_x_q8 <= Q8(HIT_X) && notes) {
+    if (g->mode == STAFF_MODE_MISS && !g->note_played && g->note_x_q8 <= Q8(HIT_X)) {
+        g->note_played = 1;
+        if (p && p->tone) p->tone(key_frequency_hz[staff_game_expected_key(g->clef, g->song, g->note_index)], 140);
+    }
+    if (g->mode == STAFF_MODE_MISS && g->note_x_q8 <= Q8(HIT_X) && notes) {
+        if (notes & expected_mask) {
+            g->error = 0;
+        } else { g->error = 1; ++g->miss_count; }
+        if (++g->note_index >= 16u) g->screen = STAFF_DONE;
+        else { g->note_x_q8 = Q8(NOTE_START_X); g->note_played = 0; }
+    } else if (g->mode == STAFF_MODE_MISS && g->note_x_q8 < Q8(HIT_X - 24)) {
+        ++g->miss_count; ++g->note_index;
+        if (g->note_index >= 16u) g->screen = STAFF_DONE;
+        else { g->note_x_q8 = Q8(NOTE_START_X); g->note_played = 0; }
+    } else if (g->mode == STAFF_MODE_PRACTICE && g->note_x_q8 <= Q8(HIT_X) && notes) {
         if (notes & expected_mask) {
             g->error = 0;
             if (p && p->tone) p->tone(key_frequency_hz[staff_game_expected_key(g->clef, g->song, g->note_index)], 100);
@@ -166,11 +186,19 @@ __attribute__((minsize)) void staff_game_draw(const StaffGame *g, const StaffPla
         p->text(28, 202, "KNOB / PLAY", WHITE);
         return;
     }
+    if (g->screen == STAFF_MODE_MENU) {
+        p->text(32, 54, "CHOOSE MODE", CYAN);
+        p->text(30, 106, g->menu_index == STAFF_MODE_PRACTICE ? "> PRACTICE" : "  PRACTICE", g->menu_index == STAFF_MODE_PRACTICE ? GOLD : WHITE);
+        p->text(30, 138, g->menu_index == STAFF_MODE_MISS ? "> MISS MODE" : "  MISS MODE", g->menu_index == STAFF_MODE_MISS ? GOLD : WHITE);
+        p->text(28, 202, "KNOB / PLAY", WHITE);
+        return;
+    }
     if (g->screen == STAFF_SONG_MENU) {
         p->text(32, 38, g->clef == STAFF_TREBLE ? "TREBLE CLEF" : "BASS CLEF", CYAN);
         p->text(32, 70, "CHOOSE SONG", WHITE);
         for (i = 0; i < 4; ++i) p->text(30, 100 + i * 25, song_names[i], (i == g->menu_index) ? GOLD : WHITE);
-        p->text(32, 209, "KNOB / PLAY", CYAN);
+        p->text(32, 198, g->mode == STAFF_MODE_MISS ? "MODE: MISS" : "MODE: PRACTICE", CYAN);
+        p->text(32, 218, "KNOB / PLAY", CYAN);
         return;
     }
     /* Five clear lines occupy 40% of the screen. Spaces and note positions are 12 px. */
@@ -186,7 +214,12 @@ __attribute__((minsize)) void staff_game_draw(const StaffGame *g, const StaffPla
         label[0] = ' '; label[1] = staff_game_note_name(g->clef, g->song, g->note_index)[0]; label[2] = '\0';
         p->text(184, 210, label, g->error ? RED : WHITE);
     }
-    if (g->error) p->text(77, 194, "PLAY THE RIGHT NOTE", RED);
+    if (g->mode == STAFF_MODE_MISS) {
+        label[0]='M'; label[1]='I'; label[2]='S'; label[3]='S'; label[4]=':'; label[5]=' ';
+        label[6]=(char)('0'+(g->miss_count/100)%10); label[7]=(char)('0'+(g->miss_count/10)%10);
+        label[8]=(char)('0'+g->miss_count%10); label[9]='\0'; p->text(8, 210, label, g->miss_count ? RED : WHITE);
+    }
+    else if (g->error) p->text(77, 194, "PLAY THE RIGHT NOTE", RED);
     else if (g->screen == STAFF_DONE) p->text(62, 194, "SONG COMPLETE!", GREEN);
     else p->text(84, 194, "PLAY THE NOTE", WHITE);
 }

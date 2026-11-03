@@ -35,6 +35,7 @@ static int (* volatile keep_ble_connect)(unsigned) = fm1_ble_connect;
 static int (* volatile keep_ble_disconnect)(void) = fm1_ble_disconnect;
 static void (* volatile keep_ble_status)(struct fm1_ble_status *) = fm1_ble_get_status;
 static int (* volatile keep_ble_device)(unsigned, struct fm1_ble_device *) = fm1_ble_get_device;
+static void (* volatile keep_bluetooth_status)(struct fm1_bluetooth_status *) = fm1_bluetooth_get_status;
 static int (* volatile keep_tuning_capture)(struct groove_tuning *) = groove_tuning_capture;
 static int (* volatile keep_tuning_apply)(const struct groove_tuning *) = groove_tuning_apply;
 static int (* volatile keep_project_edit)(const struct groove_project *, unsigned) = groove_project_apply_edit;
@@ -43,6 +44,7 @@ void groove_screen_init(void)
 {
     (void)keep_ble_role; (void)keep_ble_scan; (void)keep_ble_connect;
     (void)keep_ble_disconnect; (void)keep_ble_status; (void)keep_ble_device;
+    (void)keep_bluetooth_status;
     (void)keep_tuning_capture; (void)keep_tuning_apply; (void)keep_project_edit;
 }
 void groove_screen_tap(uint32_t now) { (void)now; }

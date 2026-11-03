@@ -42,6 +42,7 @@ static int (* volatile keep_project_edit)(const struct groove_project *, unsigne
 
 void groove_screen_init(void)
 {
+    fm1_controls_init();
     (void)keep_ble_role; (void)keep_ble_scan; (void)keep_ble_connect;
     (void)keep_ble_disconnect; (void)keep_ble_status; (void)keep_ble_device;
     (void)keep_bluetooth_status;

@@ -19,7 +19,7 @@ static const int8_t songs[3][16] = {
     {4, 6, 7, 6, 3, 5, 7, 5, 2, 4, 6, 7, 7, 5, 3, 2},
     {7, 6, 4, 7, 5, 3, 6, 4, 2, 5, 3, 1, 4, 2, 0, 4}
 };
-static const char *song_names[3] = {"Morning Steps", "River Waltz", "Little March"};
+static const char *song_names[4] = {"Morning Steps", "River Waltz", "Little March", "Daughter's Love"};
 static const char *letters[7] = {"C", "D", "E", "F", "G", "A", "B"};
 static const uint8_t natural_semitones[7] = {0, 2, 4, 5, 7, 9, 11};
 static const uint16_t key_frequency_hz[27] = {
@@ -104,8 +104,8 @@ __attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, u
         return;
     }
     if (g->screen == STAFF_SONG_MENU) {
-        if (encoder > 0) g->menu_index = (uint8_t)((g->menu_index + 1u) % 3u);
-        if (encoder < 0) g->menu_index = (uint8_t)((g->menu_index + 2u) % 3u);
+        if (encoder > 0) g->menu_index = (uint8_t)((g->menu_index + 1u) % 4u);
+        if (encoder < 0) g->menu_index = (uint8_t)((g->menu_index + 3u) % 4u);
         if (play) {
             g->song = g->menu_index; g->note_index = 0; g->error = 0;
             g->note_x_q8 = Q8(NOTE_START_X); g->screen = STAFF_PLAYING;
@@ -118,6 +118,9 @@ __attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, u
         return;
     }
     if (home) { g->screen = STAFF_SONG_MENU; g->menu_index = g->song; return; }
+
+    /* The MIDI-backed fourth song is scheduled by the FM-1 adapter. */
+    if (g->song == 3u) return;
 
     expected_mask = 1u << staff_game_expected_key(g->clef, g->song, g->note_index);
     if (g->note_x_q8 > Q8(HIT_X)) {
@@ -166,7 +169,7 @@ __attribute__((minsize)) void staff_game_draw(const StaffGame *g, const StaffPla
     if (g->screen == STAFF_SONG_MENU) {
         p->text(32, 38, g->clef == STAFF_TREBLE ? "TREBLE CLEF" : "BASS CLEF", CYAN);
         p->text(32, 70, "CHOOSE SONG", WHITE);
-        for (i = 0; i < 3; ++i) p->text(30, 106 + i * 27, song_names[i], (i == g->menu_index) ? GOLD : WHITE);
+        for (i = 0; i < 4; ++i) p->text(30, 100 + i * 25, song_names[i], (i == g->menu_index) ? GOLD : WHITE);
         p->text(32, 209, "KNOB / PLAY", CYAN);
         return;
     }
@@ -175,7 +178,7 @@ __attribute__((minsize)) void staff_game_draw(const StaffGame *g, const StaffPla
     p->line(HIT_X, 32, HIT_X, 224, CYAN);
     p->text(8, 4, g->clef == STAFF_TREBLE ? "TREBLE" : "BASS", CYAN);
     p->text(145, 28, song_names[g->song], WHITE);
-    if (g->note_index < 16) {
+    if (g->song < 3 && g->note_index < 16) {
         y = note_y(g);
         if ((songs[g->song][g->note_index] + (g->clef == STAFF_BASS ? 6 : 0)) % 2 == 0)
             p->line((int)(g->note_x_q8 >> 8) - 13, y, (int)(g->note_x_q8 >> 8) + 13, y, WHITE);

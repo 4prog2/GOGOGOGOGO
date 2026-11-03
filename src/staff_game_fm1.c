@@ -2,12 +2,15 @@
 #include "staff_game_fm1.h"
 #include "staff_game.h"
 #include "instrument.h"
+#include "daughter_qing_events.h"
+#include <string.h>
 
 #define BG 0x0000u
 #define CYAN 0x07FFu
 #define GOLD 0xFEA0u
 #define RED 0xF800u
 #define GREEN 0x07E0u
+#define WHITE 0xFFFFu
 
 static StaffGame game;
 static StaffGame draw_snapshot;
@@ -19,6 +22,12 @@ static uint8_t sounding_midi;
 static struct { uint8_t note, on; } midi_events[32];
 static volatile uint8_t midi_write, midi_read, midi_overflow;
 static uint32_t midi_held;
+static uint16_t dq_player_index, dq_accomp_index;
+static uint8_t dq_started, dq_waiting;
+static uint32_t dq_elapsed_ms, dq_last_ms, dq_draw_ms;
+static uint8_t dq_active[2][128];
+static uint32_t dq_note_off[27];
+#define DQ_LEAD_MS 4050u
 static uint16_t band_pixels[FM1_SCREEN_DMA_PIXELS];
 static const uint16_t frequencies[27] = {
     175,185,196,208,220,233,247,262,277,294,311,330,349,370,
@@ -122,6 +131,74 @@ static __attribute__((minsize)) void clear(uint16_t color)
 }
 static const StaffPlatform platform={clear,draw_line,draw_circle,draw_text,tone};
 
+static uint32_t dq_tick_ms(uint32_t tick)
+{
+    return (tick * 5u) / 3u; /* MIDI tempo 75 BPM, 480 ticks per quarter. */
+}
+
+static void dq_midi(uint8_t lane, uint8_t note, uint8_t velocity)
+{
+    uint8_t message[3] = {(uint8_t)((velocity ? 0x90u : 0x80u) |
+        groove_midi_input_channel(lane)), note, velocity};
+    (void)groove_midi_local(message, 3);
+}
+
+static int dq_note_y(StaffClef clef, unsigned note)
+{
+    static const uint8_t letter[12] = {0,0,1,1,2,3,3,4,4,5,5,6};
+    int octave = (int)(note / 12u) - 1;
+    int diatonic = octave * 7 + letter[note % 12u];
+    int bottom = clef == STAFF_TREBLE ? 30 : 18; /* E4 / G2 */
+    return 168 - (diatonic - bottom) * 12;
+}
+
+static void dq_draw(const StaffGame *g, uint32_t elapsed)
+{
+    for (unsigned i = dq_player_index; i < DQ_PLAYER_COUNT; ++i) {
+        uint32_t due = DQ_LEAD_MS + dq_tick_ms(dq_player[i].tick);
+        if (due + 20u < elapsed) continue;
+        uint32_t ahead = due > elapsed ? due - elapsed : 0;
+        int x = 52 + (int)(ahead * 42u / 1000u);
+        if (x > 232) break;
+        uint16_t color = (dq_waiting && i == dq_player_index) ? RED : GOLD;
+        uint32_t mask = dq_player[i].mask;
+        for (unsigned k = 0; k < 27; ++k) if (mask & (1u << k)) {
+            unsigned pitch = 53u + k;
+            int y = dq_note_y(g->clef, pitch);
+            int pc = pitch % 12u;
+            if (pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10) {
+                draw_line(x - 14, y - 3, x - 10, y - 3, color);
+                draw_line(x - 14, y + 2, x - 10, y + 2, color);
+            }
+            if (y < 72) for (int ly=48; ly>=y-6; ly-=24) draw_line(x-12,ly,x+12,ly,WHITE);
+            if (y > 168) for (int ly=192; ly<=y+6; ly+=24) draw_line(x-12,ly,x+12,ly,WHITE);
+            draw_circle(x, y, 6, color, 1);
+        }
+    }
+}
+
+static void dq_stop_backing(void)
+{
+    for (unsigned lane = 0; lane < 2; ++lane)
+        for (unsigned note = 0; note < 128; ++note)
+            if (dq_active[lane][note]) {
+                dq_midi((uint8_t)lane, (uint8_t)note, 0);
+                dq_active[lane][note] = 0;
+            }
+}
+
+static void dq_start(StaffGame *g, uint32_t now)
+{
+    g->note_index = 0;
+    dq_player_index = dq_accomp_index = 0;
+    dq_elapsed_ms = dq_draw_ms = 0;
+    dq_last_ms = now;
+    dq_started = 1;
+    dq_waiting = 0;
+    memset(dq_active, 0, sizeof dq_active);
+    memset(dq_note_off, 0, sizeof dq_note_off);
+}
+
 int staff_game_fm1_midi_received(const uint8_t *message, size_t bytes)
 {
     if (!message || bytes != 3) return 0;
@@ -168,16 +245,57 @@ __attribute__((minsize)) int staff_game_fm1_control(const struct fm1_controls *c
     if (game.screen != STAFF_PLAYING) midi_held = 0;
     if(!initialized) { staff_game_init(&game,now); initialized=1; draw_band=0; }
     if((c->buttons&(1u<<BTN_HOME))&&(button_edges&(1u<<BTN_REC))) {
-        stop_note(); staff_game_init(&game,now); draw_band=0; return 1;
+        stop_note(); dq_stop_backing(); dq_started=0; staff_game_init(&game,now); draw_band=0; return 1;
     }
     if(note_active&&(int32_t)(now-note_off_at)>=0) stop_note();
     int turn=c->encoders[0]>0?1:c->encoders[0]<0?-1:0;
+    uint8_t was_playing = game.screen == STAFF_PLAYING;
     staff_game_update(&game,now,key_edges|midi_held,(uint8_t)((button_edges>>BTN_PLAY)&1u),
                       (uint8_t)((button_edges>>BTN_HOME)&1u),(int8_t)turn,&platform);
+    if (!was_playing && game.screen == STAFF_PLAYING && game.song == 3u) dq_start(&game,now);
+    if (was_playing && game.screen != STAFF_PLAYING) {
+        dq_stop_backing(); dq_started=0; dq_waiting=0;
+    }
+    if (game.song == 3u && game.screen == STAFF_PLAYING && dq_started) {
+        uint32_t delta = now - dq_last_ms;
+        dq_last_ms = now;
+        if (!dq_waiting) dq_elapsed_ms += delta > 100u ? 100u : delta;
+        if (dq_player_index < DQ_PLAYER_COUNT) {
+            uint32_t due = DQ_LEAD_MS + dq_tick_ms(dq_player[dq_player_index].tick);
+            if (!dq_waiting && dq_elapsed_ms >= due) dq_waiting = 1;
+            if (dq_waiting) {
+                uint32_t expected = dq_player[dq_player_index].mask;
+                if (((key_edges | midi_held) & expected) == expected) {
+                    for (unsigned k=0;k<27;++k) if (expected & (1u<<k)) {
+                        uint8_t note = (uint8_t)(53u+k);
+                        dq_midi(0,note,88); dq_note_off[k]=now+180u;
+                    }
+                    ++dq_player_index; game.error=0; dq_waiting=0;
+                } else if (!game.error) {
+                    game.error=1; tone(110,120); dq_stop_backing();
+                }
+            }
+        } else {
+            game.screen=STAFF_DONE; dq_stop_backing(); dq_started=0;
+        }
+        for(unsigned k=0;k<27;++k) if(dq_note_off[k] && (int32_t)(now-dq_note_off[k])>=0) {
+            dq_midi(0,(uint8_t)(53u+k),0); dq_note_off[k]=0;
+        }
+        if (!dq_waiting) {
+            while (dq_accomp_index < DQ_ACCOMP_COUNT) {
+                const DQAccompEvent *e=&dq_accomp[dq_accomp_index];
+                if (DQ_LEAD_MS+dq_tick_ms(e->tick)>dq_elapsed_ms) break;
+                dq_midi(e->lane,e->note,e->on?e->velocity:0);
+                dq_active[e->lane][e->note]=e->on;
+                ++dq_accomp_index;
+            }
+        }
+    }
     if(fm1_screen_pending()==0) {
         if(draw_band==0) draw_snapshot=game;
         draw_top=(unsigned)draw_band*16u;
         staff_game_draw(&draw_snapshot,&platform);
+        if (draw_snapshot.song == 3u) dq_draw(&draw_snapshot,dq_elapsed_ms);
         int submitted=fm1_screen_submit(0,draw_top,240,16,band_pixels,FM1_SCREEN_DMA_PIXELS);
         if(submitted==0) draw_band=(uint8_t)((draw_band+1u)%15u);
         else if(submitted<0) draw_band=0;

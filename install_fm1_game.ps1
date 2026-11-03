@@ -11,7 +11,7 @@ $midiRouterPath = Join-Path $app 'midi_router.c'
 if (!(Test-Path -LiteralPath $screenPath)) { throw "FM1 Open app/screen.c not found under $root" }
 if (!(Test-Path -LiteralPath $midiRouterPath)) { throw "FM1 Open app/midi_router.c not found under $root" }
 
-foreach ($name in @('staff_game.c', 'staff_game.h', 'staff_game_fm1.c', 'staff_game_fm1.h')) {
+foreach ($name in @('staff_game.c', 'staff_game.h', 'staff_game_fm1.c', 'staff_game_fm1.h', 'daughter_qing_events.h')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "src\$name") -Destination (Join-Path $app $name) -Force
 }
 

@@ -189,6 +189,9 @@ static void dq_stop_backing(void)
 
 static void dq_start(StaffGame *g, uint32_t now)
 {
+    /* Lane 1 is the MIDI drum track; route its GM percussion notes to FM-1's
+     * built-in 808 engine instead of the melodic sound on that track. */
+    if (groove_source_type(1) != GROOVE_808) (void)groove_source_set(1, GROOVE_808);
     g->note_index = 0;
     dq_player_index = dq_accomp_index = 0;
     dq_elapsed_ms = dq_draw_ms = 0;

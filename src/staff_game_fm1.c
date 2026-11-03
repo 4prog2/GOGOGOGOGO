@@ -10,7 +10,7 @@
 
 static StaffGame game;
 static StaffGame draw_snapshot;
-static uint8_t active, initialized, note_active, exiting;
+static uint8_t initialized, note_active;
 static uint8_t draw_band;
 static unsigned draw_top;
 static uint32_t previous_keys, previous_buttons, note_off_at;
@@ -20,7 +20,7 @@ static const uint16_t frequencies[27] = {
     175,185,196,208,220,233,247,262,277,294,311,330,349,370,
     392,415,440,466,494,523,554,587,622,659,698,740,784
 };
-static void stop_note(void);
+static __attribute__((minsize)) void stop_note(void);
 /* Compact 5x7 alphabet and digits adapted from FM1 Open app/screen.c. */
 static const uint8_t glyphs[36][5] = {
     {0x3e,0x51,0x49,0x45,0x3e},{0,0x42,0x7f,0x40,0},
@@ -43,12 +43,12 @@ static const uint8_t glyphs[36][5] = {
     {7,8,0x70,8,7},{0x61,0x51,0x49,0x45,0x43}
 };
 
-static void pixel(int x, int y, uint16_t color)
+static __attribute__((minsize)) void pixel(int x, int y, uint16_t color)
 {
     if (x >= 0 && x < 240 && y >= (int)draw_top && y < (int)draw_top+16)
         band_pixels[(y-(int)draw_top)*240+x]=color;
 }
-static void draw_line(int x1,int y1,int x2,int y2,uint16_t color)
+static __attribute__((minsize)) void draw_line(int x1,int y1,int x2,int y2,uint16_t color)
 {
     if (y1 == y2) {
         int left=x1<x2?x1:x2, right=x1>x2?x1:x2;
@@ -68,7 +68,7 @@ static void draw_line(int x1,int y1,int x2,int y2,uint16_t color)
     for (;;) { pixel(x1,y1,color); if(x1==x2&&y1==y2) break;
         int twice=2*err; if(twice>=dy){err+=dy;x1+=sx;} if(twice<=dx){err+=dx;y1+=sy;} }
 }
-static void draw_circle(int x,int y,int r,uint16_t color,int filled)
+static __attribute__((minsize)) void draw_circle(int x,int y,int r,uint16_t color,int filled)
 {
     for(int dy=-r;dy<=r;dy++) {
         int half=0; while((half+1)*(half+1)+dy*dy<=r*r) ++half;
@@ -76,7 +76,7 @@ static void draw_circle(int x,int y,int r,uint16_t color,int filled)
         else { pixel(x-half,y+dy,color); pixel(x+half,y+dy,color); }
     }
 }
-static void draw_text(int x,int y,const char *s,uint16_t color)
+static __attribute__((minsize)) void draw_text(int x,int y,const char *s,uint16_t color)
 {
     for(;*s;s++,x+=6) {
         char c=*s; if(c>='a'&&c<='z') c=(char)(c-'a'+'A');
@@ -96,7 +96,7 @@ static void draw_text(int x,int y,const char *s,uint16_t color)
         }
     }
 }
-static void tone(uint16_t hz,uint16_t ms)
+static __attribute__((minsize)) void tone(uint16_t hz,uint16_t ms)
 {
     stop_note();
     if(note_active) return;
@@ -112,13 +112,13 @@ static void tone(uint16_t hz,uint16_t ms)
         fm1_control_request(); sounding_midi=(uint8_t)midi; note_active=1; note_off_at=fm1_millis()+ms;
     }
 }
-static void clear(uint16_t color)
+static __attribute__((minsize)) void clear(uint16_t color)
 {
     for(unsigned i=0;i<FM1_SCREEN_DMA_PIXELS;i++) band_pixels[i]=color;
 }
 static const StaffPlatform platform={clear,draw_line,draw_circle,draw_text,tone};
 
-static void stop_note(void)
+static __attribute__((minsize)) void stop_note(void)
 {
     if(note_active) {
         uint8_t off[3]={0x80,sounding_midi,0};
@@ -126,30 +126,16 @@ static void stop_note(void)
     }
 }
 
-int staff_game_fm1_control(const struct fm1_controls *c)
+__attribute__((minsize)) int staff_game_fm1_control(const struct fm1_controls *c)
 {
     enum { BTN_HOME=8, BTN_PLAY=12, BTN_REC=13 };
     if(!c) return 0;
     uint32_t now=fm1_millis(), key_edges=c->keys&~previous_keys;
     uint32_t button_edges=c->buttons&~previous_buttons;
     previous_keys=c->keys; previous_buttons=c->buttons;
-    if(!initialized) { staff_game_init(&game,now); initialized=1; }
-    if(!active) {
-        if(exiting) {
-            if(fm1_screen_pending()!=0) return 1;
-            exiting=0;
-            return 0;
-        }
-        if((c->buttons&(1u<<BTN_HOME))&&(button_edges&(1u<<BTN_PLAY))) {
-            active=1; draw_band=0; staff_game_init(&game,now);
-            fm1_led_set(BTN_PLAY,1); fm1_led_set(BTN_HOME,1);
-            return 1;
-        }
-        return 0;
-    }
+    if(!initialized) { staff_game_init(&game,now); initialized=1; draw_band=0; }
     if((c->buttons&(1u<<BTN_HOME))&&(button_edges&(1u<<BTN_REC))) {
-        active=0; exiting=1; stop_note(); draw_band=0;
-        fm1_led_set(BTN_PLAY,0); fm1_led_set(BTN_HOME,0); return 1;
+        stop_note(); staff_game_init(&game,now); draw_band=0; return 1;
     }
     if(note_active&&(int32_t)(now-note_off_at)>=0) stop_note();
     int turn=c->encoders[0]>0?1:c->encoders[0]<0?-1:0;

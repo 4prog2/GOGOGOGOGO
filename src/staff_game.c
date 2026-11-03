@@ -28,18 +28,18 @@ static const uint16_t key_frequency_hz[27] = {
     494, 523, 554, 587, 622, 659, 698, 740, 784
 };
 
-static int natural_midi(int midi)
+static __attribute__((minsize)) int natural_midi(int midi)
 {
     static const int natural[12] = {0, 0, 2, 2, 4, 5, 5, 7, 7, 9, 9, 11};
     return midi - (midi % 12) + natural[midi % 12];
 }
 
-static int staff_base_midi(StaffClef clef)
+static __attribute__((minsize)) int staff_base_midi(StaffClef clef)
 {
     return clef == STAFF_TREBLE ? 64 : 43; /* E4 / G2, bottom staff lines */
 }
 
-static int step_midi(StaffClef clef, int step)
+static __attribute__((minsize)) int step_midi(StaffClef clef, int step)
 {
     int base = staff_base_midi(clef);
     int base_pc = base % 12;
@@ -51,7 +51,7 @@ static int step_midi(StaffClef clef, int step)
     return natural_midi(octave * 12 + natural_semitones[letter]);
 }
 
-uint8_t staff_game_expected_key(StaffClef clef, uint8_t song, uint8_t note_index)
+__attribute__((minsize)) uint8_t staff_game_expected_key(StaffClef clef, uint8_t song, uint8_t note_index)
 {
     int midi;
     if (song >= 3 || note_index >= 16) return 0xFFu;
@@ -74,19 +74,19 @@ const char *staff_game_note_name(StaffClef clef, uint8_t song, uint8_t note_inde
     return result;
 }
 
-void staff_game_init(StaffGame *g, uint32_t now_ms)
+__attribute__((minsize)) void staff_game_init(StaffGame *g, uint32_t now_ms)
 {
     g->screen = STAFF_TITLE; g->clef = STAFF_TREBLE; g->song = 0;
     g->note_index = 0; g->menu_index = 0; g->error = 0;
     g->note_mask = 0; g->last_ms = now_ms; g->note_x_q8 = Q8(NOTE_START_X);
 }
 
-static void error_tone(const StaffPlatform *p)
+static __attribute__((minsize)) void error_tone(const StaffPlatform *p)
 {
     if (p && p->tone) p->tone(110, 120);
 }
 
-void staff_game_update(StaffGame *g, uint32_t now_ms, uint32_t notes,
+__attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, uint32_t notes,
                        uint8_t play, uint8_t home, int8_t encoder,
                        const StaffPlatform *p)
 {
@@ -136,15 +136,15 @@ void staff_game_update(StaffGame *g, uint32_t now_ms, uint32_t notes,
     }
 }
 
-static int note_y(const StaffGame *g)
+static __attribute__((minsize)) int note_y(const StaffGame *g)
 {
     int step = songs[g->song][g->note_index] + (g->clef == STAFF_BASS ? 6 : 0);
     return STAFF_BOTTOM - step * STEP_PIXELS;
 }
 
-static int staff_bottom(const StaffGame *g) { (void)g; return STAFF_BOTTOM; }
+static __attribute__((minsize)) int staff_bottom(const StaffGame *g) { (void)g; return STAFF_BOTTOM; }
 
-void staff_game_draw(const StaffGame *g, const StaffPlatform *p)
+__attribute__((minsize)) void staff_game_draw(const StaffGame *g, const StaffPlatform *p)
 {
     int i, y;
     char label[24];

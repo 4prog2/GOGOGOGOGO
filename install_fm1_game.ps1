@@ -55,6 +55,7 @@ void groove_screen_control(void)
     if (!initialized) { groove_screen_init(); initialized = 1; }
     struct fm1_controls controls;
     fm1_controls_read(&controls);
+    (void)groove_master_update(controls.knob);
     (void)staff_game_fm1_control(&controls);
 }
 void groove_screen_mmc(unsigned command) { (void)command; }

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception */
 #include "staff_game_fm1.h"
 #include "staff_game.h"
+#include "instrument.h"
 
 #define BG 0x0000u
 #define CYAN 0x07FFu
@@ -108,7 +109,7 @@ static __attribute__((minsize)) void tone(uint16_t hz,uint16_t ms)
         midi=53+best;
     }
     uint8_t on[3]={0x90,(uint8_t)midi,88};
-    if(fm1_midi_post(on,3)==0) {
+    if(groove_midi_local(on,3)==0) {
         fm1_control_request(); sounding_midi=(uint8_t)midi; note_active=1; note_off_at=fm1_millis()+ms;
     }
 }
@@ -122,7 +123,7 @@ static __attribute__((minsize)) void stop_note(void)
 {
     if(note_active) {
         uint8_t off[3]={0x80,sounding_midi,0};
-        if(fm1_midi_post(off,3)==0) { fm1_control_request(); note_active=0; }
+        if(groove_midi_local(off,3)==0) { fm1_control_request(); note_active=0; }
     }
 }
 

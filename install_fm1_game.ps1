@@ -7,7 +7,9 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $Fm1OpenRoot).Path
 $app = Join-Path $root 'app'
 $screenPath = Join-Path $app 'screen.c'
+$midiRouterPath = Join-Path $app 'midi_router.c'
 if (!(Test-Path -LiteralPath $screenPath)) { throw "FM1 Open app/screen.c not found under $root" }
+if (!(Test-Path -LiteralPath $midiRouterPath)) { throw "FM1 Open app/midi_router.c not found under $root" }
 
 foreach ($name in @('staff_game.c', 'staff_game.h', 'staff_game_fm1.c', 'staff_game_fm1.h')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "src\$name") -Destination (Join-Path $app $name) -Force
@@ -16,12 +18,6 @@ foreach ($name in @('staff_game.c', 'staff_game.h', 'staff_game_fm1.c', 'staff_g
 $screen = Get-Content -LiteralPath $screenPath -Raw
 $marker = '#include "fm1_engine_control.h"'
 $guard = '#define FM1_STAFF_GAME_ONLY 1'
-if ($screen.Contains($guard)) {
-    Write-Output 'FM1 game-only screen integration is already installed.'
-    exit 0
-}
-if (!$screen.Contains($marker)) { throw 'Could not find the expected FM1 Open screen include anchor.' }
-
 $branch = @'
 #include "staff_game_fm1.h"
 #define FM1_STAFF_GAME_ONLY 1
@@ -62,7 +58,31 @@ void groove_screen_mmc(unsigned command) { (void)command; }
 
 #else
 '@
-$screen = $screen.Replace($marker, $marker + "`r`n" + $branch)
-$screen += "`r`n#endif /* FM1_STAFF_GAME_ONLY */`r`n"
-Set-Content -LiteralPath $screenPath -Value $screen -NoNewline
-Write-Output 'Installed the staff game as the FM1 Open screen. The original editor screens are excluded from the firmware build.'
+$screenChanged = $false
+if (!$screen.Contains($guard)) {
+    if (!$screen.Contains($marker)) { throw 'Could not find the expected FM1 Open screen include anchor.' }
+    $screen = $screen.Replace($marker, $marker + "`r`n" + $branch)
+    $screen += "`r`n#endif /* FM1_STAFF_GAME_ONLY */`r`n"
+    Set-Content -LiteralPath $screenPath -Value $screen -NoNewline
+    $screenChanged = $true
+}
+
+$midiRouter = Get-Content -LiteralPath $midiRouterPath -Raw
+$routerInclude = '#include "staff_game_fm1.h"'
+$routerAnchor = '#include "fm1_engine_control.h"'
+if (!$midiRouter.Contains($routerInclude)) {
+    if (!$midiRouter.Contains($routerAnchor)) { throw 'Could not find the expected FM1 Open MIDI router include anchor.' }
+    $midiRouter = $midiRouter.Replace($routerAnchor, $routerAnchor + "`r`n" + $routerInclude)
+}
+$oldPost = '(void)fm1_midi_post(m, n);'
+$gamePost = 'if (!staff_game_fm1_midi_received(m, n)) (void)fm1_midi_post(m, n);'
+if (!$midiRouter.Contains($gamePost)) {
+    if (!$midiRouter.Contains($oldPost)) { throw 'Could not find the expected MIDI input dispatch.' }
+    $midiRouter = $midiRouter.Replace($oldPost, $gamePost)
+    Set-Content -LiteralPath $midiRouterPath -Value $midiRouter -NoNewline
+}
+if ($screenChanged) {
+    Write-Output 'Installed the staff game screen and MIDI input.'
+} else {
+    Write-Output 'Updated the staff game MIDI input hook.'
+}

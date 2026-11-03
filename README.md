@@ -7,6 +7,7 @@ A compact C99 five-line staff rhythm game for the 240×240 M-VAVE FM-1. It has s
 - Press **PLAY** on the title screen to choose a clef. Turn encoder 1 to switch between treble and bass, then press **PLAY**.
 - Turn encoder 1 to choose one of three songs and press **PLAY** to start.
 - Press the physical note key matching the note at the hit line. A correct pitch advances to the next note and sounds its tone; an incorrect pitch pauses at the hit line until corrected.
+- A connected MIDI keyboard can also play note-on/note-off pitches F3–G5 on any MIDI channel. Press **PLAY** and use the emulator or FM-1 panel buttons to choose clef and song; MIDI notes control the gameplay pitches.
 - Press **HOME** to return to song selection. Press **PLAY** after a song ends to choose another. Hold **HOME** and press **REC** to restart at the title screen.
 
 The score uses natural notes. FM-1 note bit 0 is F3 and bit 26 is G5; the clef-specific mapping is calculated from the standard bottom staff lines (E4 for treble, G2 for bass). The bass exercises place notes in the FM-1's playable register and draw ledger lines above the staff when needed.

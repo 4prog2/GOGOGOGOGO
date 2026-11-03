@@ -16,6 +16,9 @@ static uint8_t draw_band;
 static unsigned draw_top;
 static uint32_t previous_keys, previous_buttons, note_off_at;
 static uint8_t sounding_midi;
+static struct { uint8_t note, on; } midi_events[32];
+static volatile uint8_t midi_write, midi_read, midi_overflow;
+static uint32_t midi_held;
 static uint16_t band_pixels[FM1_SCREEN_DMA_PIXELS];
 static const uint16_t frequencies[27] = {
     175,185,196,208,220,233,247,262,277,294,311,330,349,370,
@@ -119,6 +122,20 @@ static __attribute__((minsize)) void clear(uint16_t color)
 }
 static const StaffPlatform platform={clear,draw_line,draw_circle,draw_text,tone};
 
+int staff_game_fm1_midi_received(const uint8_t *message, size_t bytes)
+{
+    if (!message || bytes != 3) return 0;
+    uint8_t type = message[0] & 0xf0u;
+    if ((type != 0x80u && type != 0x90u) || message[1] < 53u || message[1] > 79u) return 0;
+    uint8_t next = (uint8_t)((midi_write + 1u) & 31u);
+    if (next == midi_read) { midi_overflow = 1; return 1; }
+    midi_events[midi_write].note = message[1];
+    midi_events[midi_write].on = (uint8_t)(type == 0x90u && message[2] != 0);
+    __asm__ volatile("csync" ::: "memory");
+    midi_write = next;
+    return 1;
+}
+
 static __attribute__((minsize)) void stop_note(void)
 {
     if(note_active) {
@@ -134,13 +151,28 @@ __attribute__((minsize)) int staff_game_fm1_control(const struct fm1_controls *c
     uint32_t now=fm1_millis(), key_edges=c->keys&~previous_keys;
     uint32_t button_edges=c->buttons&~previous_buttons;
     previous_keys=c->keys; previous_buttons=c->buttons;
+    if (midi_overflow) {
+        midi_held = 0;
+        midi_read = midi_write;
+        midi_overflow = 0;
+    }
+    while (midi_read != midi_write) {
+        uint8_t read = midi_read;
+        uint8_t note = midi_events[read].note;
+        uint32_t bit = 1u << (note - 53u);
+        if (midi_events[read].on) midi_held |= bit;
+        else midi_held &= ~bit;
+        __asm__ volatile("csync" ::: "memory");
+        midi_read = (uint8_t)((read + 1u) & 31u);
+    }
+    if (game.screen != STAFF_PLAYING) midi_held = 0;
     if(!initialized) { staff_game_init(&game,now); initialized=1; draw_band=0; }
     if((c->buttons&(1u<<BTN_HOME))&&(button_edges&(1u<<BTN_REC))) {
         stop_note(); staff_game_init(&game,now); draw_band=0; return 1;
     }
     if(note_active&&(int32_t)(now-note_off_at)>=0) stop_note();
     int turn=c->encoders[0]>0?1:c->encoders[0]<0?-1:0;
-    staff_game_update(&game,now,key_edges,(uint8_t)((button_edges>>BTN_PLAY)&1u),
+    staff_game_update(&game,now,key_edges|midi_held,(uint8_t)((button_edges>>BTN_PLAY)&1u),
                       (uint8_t)((button_edges>>BTN_HOME)&1u),(int8_t)turn,&platform);
     if(fm1_screen_pending()==0) {
         if(draw_band==0) draw_snapshot=game;

@@ -128,7 +128,14 @@ __attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, u
     /* The MIDI-backed fourth song is scheduled by the FM-1 adapter. */
     if (g->song == 3u) return;
 
-    expected_mask = 1u << staff_game_expected_key(g->clef, g->song, g->note_index);
+    unsigned expected_key = staff_game_expected_key(g->clef, g->song, g->note_index);
+    /* Keep malformed or out-of-range song data from invoking an undefined
+     * shift or indexing the 27-note frequency table. */
+    if (expected_key >= sizeof key_frequency_hz / sizeof key_frequency_hz[0]) {
+        g->error = 1;
+        return;
+    }
+    expected_mask = 1u << expected_key;
     if (g->note_x_q8 > Q8(g->mode == STAFF_MODE_MISS ? HIT_X - 24 : HIT_X)) {
         /* 42 px/s; elapsed time bounds prevent jumps after a suspended frame. */
         if (elapsed > 100u) elapsed = 100u;
@@ -137,7 +144,7 @@ __attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, u
     }
     if (g->mode == STAFF_MODE_MISS && !g->note_played && g->note_x_q8 <= Q8(HIT_X)) {
         g->note_played = 1;
-        if (p && p->tone) p->tone(key_frequency_hz[staff_game_expected_key(g->clef, g->song, g->note_index)], 140);
+        if (p && p->tone) p->tone(key_frequency_hz[expected_key], 140);
     }
     if (g->mode == STAFF_MODE_MISS && g->note_x_q8 <= Q8(HIT_X) && notes) {
         if (notes & expected_mask) {
@@ -152,7 +159,7 @@ __attribute__((minsize)) void staff_game_update(StaffGame *g, uint32_t now_ms, u
     } else if (g->mode == STAFF_MODE_PRACTICE && g->note_x_q8 <= Q8(HIT_X) && notes) {
         if (notes & expected_mask) {
             g->error = 0;
-            if (p && p->tone) p->tone(key_frequency_hz[staff_game_expected_key(g->clef, g->song, g->note_index)], 100);
+            if (p && p->tone) p->tone(key_frequency_hz[expected_key], 100);
             if (++g->note_index >= 16u) g->screen = STAFF_DONE;
             else g->note_x_q8 = Q8(NOTE_START_X);
         } else if (!g->error) { g->error = 1; error_tone(p); }
@@ -183,14 +190,14 @@ __attribute__((minsize)) void staff_game_draw(const StaffGame *g, const StaffPla
         p->text(28, 54, "CHOOSE CLEF", CYAN);
         p->text(38, 105, g->menu_index == 0 ? "> TREBLE" : "  TREBLE", g->menu_index == 0 ? GOLD : WHITE);
         p->text(38, 137, g->menu_index == 1 ? "> BASS" : "  BASS", g->menu_index == 1 ? GOLD : WHITE);
-        p->text(28, 202, "KNOB / PLAY", WHITE);
+        p->text(28, 202, "KNOB 9 0 PLAY", WHITE);
         return;
     }
     if (g->screen == STAFF_MODE_MENU) {
         p->text(32, 54, "CHOOSE MODE", CYAN);
         p->text(30, 106, g->menu_index == STAFF_MODE_PRACTICE ? "> PRACTICE" : "  PRACTICE", g->menu_index == STAFF_MODE_PRACTICE ? GOLD : WHITE);
         p->text(30, 138, g->menu_index == STAFF_MODE_MISS ? "> MISS MODE" : "  MISS MODE", g->menu_index == STAFF_MODE_MISS ? GOLD : WHITE);
-        p->text(28, 202, "KNOB / PLAY", WHITE);
+        p->text(28, 202, "KNOB 9 0 PLAY", WHITE);
         return;
     }
     if (g->screen == STAFF_SONG_MENU) {
@@ -198,7 +205,7 @@ __attribute__((minsize)) void staff_game_draw(const StaffGame *g, const StaffPla
         p->text(32, 70, "CHOOSE SONG", WHITE);
         for (i = 0; i < 4; ++i) p->text(30, 100 + i * 25, song_names[i], (i == g->menu_index) ? GOLD : WHITE);
         p->text(32, 198, g->mode == STAFF_MODE_MISS ? "MODE: MISS" : "MODE: PRACTICE", CYAN);
-        p->text(32, 218, "KNOB / PLAY", CYAN);
+        p->text(32, 218, "KNOB 9 0 PLAY", CYAN);
         return;
     }
     /* Five clear lines occupy 40% of the screen. Spaces and note positions are 12 px. */

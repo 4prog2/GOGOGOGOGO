@@ -2,6 +2,9 @@
 
 A compact C99 five-line staff rhythm game for the 240×240 M-VAVE FM-1. It has separate treble and bass clef modes, three short original note sequences, and the MIDI song “Daughter's Love.” Choose Practice to wait for the right note, or Miss Mode to keep the music and notes moving while wrong or missed notes increase the MISS count. The MIDI song plays drums, intro, and bass as backing, with melody notes shown on the staff for the player.
 
+<img width="737" height="476" alt="image" src="https://github.com/user-attachments/assets/95cdcd1b-7ba8-4cd5-8574-8454f9e68995" />
+
+
 ## Controls
 
 - Press **PLAY** on the title screen to choose a clef. Turn encoder 1 to switch between treble and bass, then press **PLAY**.
